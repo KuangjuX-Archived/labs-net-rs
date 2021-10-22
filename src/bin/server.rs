@@ -6,6 +6,7 @@ use webserver::tp::{SharedQueueThreadPool, ThreadPool};
 fn main() {
     println!("Hello Echo Server");
     let listener = TcpListener::bind("127.0.0.1:8080").expect("Fail to bind address");
+    // listener.set_nonblocking(true).unwrap();
     let tp = SharedQueueThreadPool::new(16).expect("Fail to new a thread pool");
     let (sender, receiver) = mpsc::channel::<Vec<u8>>();
     let mut clients = vec![];
@@ -15,6 +16,7 @@ fn main() {
             let sender = sender.clone();
             clients.push(stream.try_clone().unwrap());
             tp.spawn(move || {
+                println!("Enter Thread Pool");
                 let mut buf = [0; 1024];
                 match stream.read_exact(&mut buf) {
                     Ok(_) => {
