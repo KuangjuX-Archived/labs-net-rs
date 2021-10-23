@@ -35,9 +35,10 @@ fn main() {
         stdin().read_line(&mut buffer).unwrap();
         let message = buffer.trim().to_string();
         println!("Client send msg: {}", message);
+        let mut buf = message.into_bytes();
+        buf.resize(1024, 0);
         let mut guard = wclient.lock().unwrap();
-        guard.write(message.as_bytes()).unwrap();
-        guard.flush().unwrap();
+        guard.write(&buf).unwrap();
         drop(guard);
     }
 }
