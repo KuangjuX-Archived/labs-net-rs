@@ -17,7 +17,7 @@ fn main() {
             clients.push(socket.try_clone().unwrap());
             tp.spawn(move || {
                 loop {
-                    let mut buf = [0; 1024];
+                    let mut buf = [0; 10];
                     match socket.read_exact(&mut buf) {
                         Ok(_) => {
                             let s = String::from_utf8(buf.to_vec()).expect("Fail to convert u8 to string");

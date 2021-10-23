@@ -22,6 +22,7 @@ fn main() {
                 Err(err) => {
                     // panic!("err: {}", err);
                     println!("连接中断");
+                    println!("[Debug] 错误: {}", err);
                     break;
                 }
             }
