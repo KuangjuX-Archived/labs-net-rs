@@ -1,6 +1,6 @@
 use std::net::TcpStream;
 use std::io::{ Read, Write, stdin, ErrorKind };
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::mpsc;
 
 fn main() {
     let mut client = TcpStream::connect("127.0.0.1:8080").expect("Fail to connect");
