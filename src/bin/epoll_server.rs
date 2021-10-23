@@ -17,7 +17,7 @@ fn main() {
     // 创建一个 TCP socket
     let socket_fd = socket(
         AddressFamily::Inet, 
-        SockType::Datagram, 
+        SockType::Stream, 
         SockFlag::SOCK_NONBLOCK, 
         SockProtocol::Tcp
     ).expect("Fail to new socket");
@@ -29,13 +29,22 @@ fn main() {
         &SockAddr::new_inet(InetAddr::new(localhost, 8080))
     ).expect("Fail to bind socket");
 
+    listen(
+        socket_fd, 
+        10
+    ).unwrap();
+
     // 创建 epoll 事件
+    // 可读事件
     let mut event_read_only = EpollEvent::new(EpollFlags::EPOLLIN, 0u64);
+    // 可读可写事件
     let mut event_read_write = EpollEvent::new(EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT, 0u64);
+    // 回调事件的数组，当 epoll 中有响应事件
     let mut current_events = [EpollEvent::empty(); MAX_EVENTS];
     
     // 注册 epoll
     let epoll_fd = epoll_create1(EpollCreateFlags::empty()).expect("Fail to create epoll");
+    // 开始只响应可读事件
     epoll_ctl(
         epoll_fd, 
         EpollOp::EpollCtlAdd, 
