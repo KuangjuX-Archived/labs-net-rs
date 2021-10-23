@@ -15,7 +15,7 @@ fn main() {
             match guard.read_exact(&mut buffer) {
                 Ok(_) => {
                     let msg = String::from_utf8(buffer.to_vec()).unwrap();
-                    println!("msg: {}", msg);
+                    println!("客户端接收到消息： {}", msg);
                 },
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
 
@@ -34,7 +34,6 @@ fn main() {
         // println!(">>>");
         stdin().read_line(&mut buffer).unwrap();
         let message = buffer.trim().to_string();
-        println!("Client send msg: {}", message);
         let mut buf = message.into_bytes();
         buf.resize(1024, 0);
         let mut guard = wclient.lock().unwrap();

@@ -12,7 +12,7 @@ fn main() {
     let mut clients = vec![];
     loop {
         if let Ok((mut socket, addr)) = listener.accept() {
-            println!("Address {} connect", addr);
+            println!("客户端 {} 连接", addr);
             let sender = sender.clone();
             clients.push(socket.try_clone().unwrap());
             tp.spawn(move || {
@@ -21,13 +21,13 @@ fn main() {
                     match socket.read_exact(&mut buf) {
                         Ok(_) => {
                             let s = String::from_utf8(buf.to_vec()).expect("Fail to convert u8 to string");
-                            println!("Server receive address {} msg: {}", addr, s);
+                            println!("服务端接收到客户端 {} 消息: {}", addr, s);
                             sender.send(s.into_bytes()).expect("Fail to send message to sender");
                         },
                         
                         Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
                         Err(_) => {
-                            println!("Address {} exit", addr);
+                            println!("客户端 {} 退出", addr);
                             break;
                         }
                     }

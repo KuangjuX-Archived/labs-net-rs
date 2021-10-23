@@ -87,6 +87,7 @@ pub fn run_task(id: u32, receiver: Arc<Mutex<Receiver<ThreadPoolMessage>>>) {
         let recv = receiver.lock().unwrap();
         match recv.recv().unwrap() {
             ThreadPoolMessage::Task(task) => {
+                drop(recv);
                 task();
             },
 
