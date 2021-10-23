@@ -1,44 +1,39 @@
 use std::net::TcpStream;
 use std::io::{ Read, Write, stdin, ErrorKind };
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 fn main() {
-    let client = TcpStream::connect("127.0.0.1:8080").expect("Fail to connect");
+    let mut client = TcpStream::connect("127.0.0.1:8080").expect("Fail to connect");
     client.set_nonblocking(true).unwrap();
-    let client = Arc::new(Mutex::new(client));
-    let rclient = Arc::clone(&client);
-    let wclient = Arc::clone(&client);
+    let (sender, receiver) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         loop {
             let mut buffer = [0; 1024];
-            let mut guard = rclient.lock().unwrap();
-            match guard.read_exact(&mut buffer) {
+            match client.read_exact(&mut buffer) {
                 Ok(_) => {
                     let msg = String::from_utf8(buffer.to_vec()).unwrap();
-                    println!("客户端接收到消息： {}", msg);
+                    println!("Client receive message： {}", msg);
                 },
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
 
                 Err(err) => {
-                    // panic!("err: {}", err);
-                    println!("连接中断");
-                    println!("[Debug] 错误: {}", err);
+                    println!("Client close cnnection beacause {}", err);
                     break;
                 }
             }
-            drop(guard);
+
+            if let Ok(data) = receiver.try_recv() {
+                client.write(&data).expect("Fail to transform data into server");
+            }
         }
     });
 
     loop {
         let mut buffer = String::new();
-        // println!(">>>");
         stdin().read_line(&mut buffer).unwrap();
         let message = buffer.trim().to_string();
         let mut buf = message.into_bytes();
         buf.resize(1024, 0);
-        let mut guard = wclient.lock().unwrap();
-        guard.write(&buf).unwrap();
-        drop(guard);
+        sender.send(buf).expect("Fail to send message");
     }
 }

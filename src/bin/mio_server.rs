@@ -6,7 +6,6 @@ use mio::{Events, Interest, Poll, Registry, Token};
 use webserver::tp::{ SharedQueueThreadPool, ThreadPool };
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
-use std::str::from_utf8;
 use std::sync::mpsc;
 
 // Setup some tokens to allow us to identify which event is for which socket.
