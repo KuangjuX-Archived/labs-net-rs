@@ -126,7 +126,7 @@ fn handle_connection_event(
                 Ok(_) => {
                     // After we've written something we'll reregister the connection
                     // to only respond to readable events.
-                    registry.reregister(connection, event.token(), Interest::READABLE)?
+                    // registry.reregister(connection, event.token(), Interest::READABLE)?
                 }
                 // Would block "errors" are the OS's way of saying that the
                 // connection is not actually ready to perform this I/O operation.
