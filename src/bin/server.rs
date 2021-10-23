@@ -9,36 +9,67 @@ fn main() {
     listener.set_nonblocking(true).unwrap();
     let tp = SharedQueueThreadPool::new(16).expect("Fail to new a thread pool");
     let (sender, receiver) = mpsc::channel::<Vec<u8>>();
-    let mut clients = vec![];
+    // let mut clients = vec![];
     loop {
-        if let Ok((mut stream, addr)) = listener.accept() {
+        if let Ok((mut socket, addr)) = listener.accept() {
             println!("Address {} connect", addr);
-            let sender = sender.clone();
-            clients.push(stream.try_clone().unwrap());
+            // let sender = sender.clone();
+            // clients.push(socket.try_clone().unwrap());
+            // tp.spawn(move || {
+            //     loop {
+            //         let mut buf = [0; 1024];
+            //         match socket.read_exact(&mut buf) {
+            //             Ok(_) => {
+            //                 println!("Receive message");
+            //                 let s = String::from_utf8(buf.to_vec()).expect("Fail to convert u8 to string");
+            //                 println!("Server receive client {} msg: {}", addr, s);
+            //                 sender.send(s.into_bytes()).expect("Fail to send message to sender");
+            //             },
+                        
+            //             Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
+            //             Err(_) => {
+            //                 println!("Address {} exit", addr);
+            //                 break;
+            //             }
+            //         }
+            //     }
+            // })
             tp.spawn(move || {
                 loop {
                     let mut buf = [0; 1024];
-                    match stream.read_exact(&mut buf) {
-                        Ok(_) => {
-                            let s = String::from_utf8(buf.to_vec()).expect("Fail to convert u8 to string");
-                            println!("Server receive client {} msg: {}", addr, s);
-                            sender.send(s.into_bytes()).expect("Fail to send message to sender");
-                        },
-                        
-                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
-                        Err(_) => {
-                            println!("Addr {} exit", addr);
-                            break;
-                        }
-                    }
+                    socket.read_exact(&mut buf).unwrap();
+                    println!("Request: {}", String::from_utf8_lossy(&buf[..]));
                 }
-            })
+            });
         }
 
-        if let Ok(msg) =  receiver.try_recv() {
-            for client in clients.iter_mut() {
-                client.write(&msg).expect("Fail to write");
-            }
-        }
+        // if let Ok(msg) =  receiver.try_recv() {
+        //     for client in clients.iter_mut() {
+        //         client.write(&msg).expect("Fail to write");
+        //     }
+        // }
     }
 }
+
+
+// use std::io::prelude::*;
+// use std::net::TcpListener;
+// use std::net::TcpStream;
+
+// fn main() {
+//     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+
+//     for stream in listener.incoming() {
+//         let stream = stream.unwrap();
+
+//         handle_connection(stream);
+//     }
+// }
+
+// fn handle_connection(mut stream: TcpStream) {
+//     let mut buffer = [0; 1024];
+
+//     stream.read(&mut buffer).unwrap();
+
+//     println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+// }

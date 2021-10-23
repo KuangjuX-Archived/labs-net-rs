@@ -20,7 +20,9 @@ fn main() {
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
 
                 Err(err) => {
-                    panic!("err: {}", err);
+                    // panic!("err: {}", err);
+                    println!("连接中断");
+                    break;
                 }
             }
             drop(guard);
@@ -29,12 +31,13 @@ fn main() {
 
     loop {
         let mut buffer = String::new();
-        println!(">>>");
+        // println!(">>>");
         stdin().read_line(&mut buffer).unwrap();
         let message = buffer.trim().to_string();
         println!("Client send msg: {}", message);
         let mut guard = wclient.lock().unwrap();
         guard.write(message.as_bytes()).unwrap();
+        guard.flush().unwrap();
         drop(guard);
     }
 }
