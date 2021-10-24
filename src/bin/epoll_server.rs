@@ -16,7 +16,8 @@ const MAX_MESSAGE_SIZE: usize = 1024;
 const MAX_QUEUE_SIZE: usize = 64;
 
 struct Message {
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
+    addr: SockAddr
 }
 
 fn main() {
@@ -45,9 +46,7 @@ fn main() {
 
     // 创建 epoll 事件
     // 可读事件
-    let mut event_read_only = EpollEvent::new(EpollFlags::EPOLLIN, 0u64);
-    // 可读可写事件
-    let mut event_read_write = EpollEvent::new(EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT, 0u64);
+    let mut event_read_only = EpollEvent::new(EpollFlags::EPOLLIN, listen_fd as u64);
     // 回调事件的数组，当 epoll 中有响应事件则加入到这个数组中
     let mut current_events = [EpollEvent::empty(); MAX_EVENTS];
     
@@ -73,7 +72,7 @@ fn main() {
         // 遍历所有事件
         for i in 0..num_events {
             let event = current_events[i].clone();
-            if event.data() == listen_fd as u64 {
+            if event.data() as i32 == listen_fd {
                 // 如果当前事件发生在 listen_fd 上，则说明产生连接，此时接收连接
                 if event.events().contains(EpollFlags::EPOLLIN) {
                     // 接收连接，获取 socket
@@ -81,7 +80,14 @@ fn main() {
                     if socket_fd > 0 {
                         // 设置连接为非阻塞模式
                         fcntl(socket_fd, nix::fcntl::FcntlArg::F_GETFL).unwrap();
+                        let addr = getpeername(socket_fd).unwrap();
+                        println!("Server accept {}", addr);
                         // 将新连接加入到epoll中，设置读写模式，即当发生可读或可写事件时都会触发
+                        // 可读可写事件
+                        let mut event_read_write = EpollEvent::new(
+                            EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT, 
+                            socket_fd as u64
+                        );
                         epoll_ctl(
                             epoll_fd, 
                             EpollOp::EpollCtlAdd, 
@@ -92,30 +98,37 @@ fn main() {
                 }
             }else {
                 if event.events().contains(EpollFlags::EPOLLOUT) {
+                    // println!("[Debug] EPOLLOUT");
                     // 当 socket 可写时
                     let mut outgoing_queue = Arc::clone(&outgoing_queue);
                     tp.spawn(move || {
                         // 开启线程池，将data从队列中取出并送入客户端
                         let mut guard = outgoing_queue.lock().unwrap();
-                        let msg = guard.pop_front().unwrap();
+                        match guard.pop_front() {
+                            Some(msg) => {
+                                // 将消息发送到客户端
+                                let nbytes = write(event.data() as i32, &msg.buffer).unwrap();
+                                println!("Send {} bytes", nbytes);
+                            },
+                            None => ()
+                        }
                         drop(guard);
-                        // 将消息发送到客户端
-                        let nbytes = write(event.data() as i32, &msg.buffer).unwrap();
-                        println!("Send {} bytes", nbytes);
                     });
                 }
 
                 if event.events().contains(EpollFlags::EPOLLIN) {
+                    // println!("[Debug] EPOLLIN");
                     // 当 socket 可读时
                     let mut outgoing_queue = Arc::clone(&outgoing_queue);
                     tp.spawn(move || {
                         // 开启线程池，将消息送入到队列中
                         let mut buf = [0; 1024];
                         let nbytes = read(event.data() as i32, &mut buf).unwrap();
+                        let addr = getpeername(event.data() as i32).unwrap();
                         let s = String::from_utf8_lossy(&buf);
                         println!("Client receive {} bytes msg: {}", nbytes, s);
                         let mut guard = outgoing_queue.lock().unwrap();
-                        guard.push_back(Message{buffer: buf.to_vec()});
+                        guard.push_back(Message{buffer: buf.to_vec(), addr: addr});
                         drop(guard);
                     });
                 }
