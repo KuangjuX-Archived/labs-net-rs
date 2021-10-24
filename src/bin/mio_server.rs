@@ -1,5 +1,4 @@
-// You can run this example from the root of the mio repo:
-// cargo run --example tcp_server --features="os-poll net"
+
 use mio::event::Event;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Registry, Token};
@@ -33,10 +32,6 @@ fn main() -> io::Result<()> {
     let mut connections = HashMap::new();
     // Unique token for each incoming connection.
     let mut unique_token = Token(SERVER.0 + 1);
-
-    println!("You can connect to the server using `nc`:");
-    println!(" $ nc 127.0.0.1 8080");
-    println!("You'll see our welcome message and anything you type will be printed here.");
 
     let tp = SharedQueueThreadPool::new(16).expect("Fail to allocate thread pool");
     let (sender, receiver) = mpsc::channel::<Vec<u8>>();
