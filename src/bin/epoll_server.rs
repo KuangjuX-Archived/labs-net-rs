@@ -1,4 +1,6 @@
 
+
+use nix::fcntl::*;
 use nix::sys::epoll::*;
 use nix::sys::socket::*;
 
@@ -15,7 +17,7 @@ struct Message {
 
 fn main() {
     // 创建一个 TCP socket
-    let socket_fd = socket(
+    let listen_fd = socket(
         AddressFamily::Inet, 
         SockType::Stream, 
         SockFlag::SOCK_NONBLOCK, 
@@ -25,13 +27,13 @@ fn main() {
     let localhost: IpAddr = IpAddr::new_v4(127, 0, 0, 1);
     // 绑定端口
     bind(
-        socket_fd, 
+        listen_fd, 
         &SockAddr::new_inet(InetAddr::new(localhost, 8080))
     ).expect("Fail to bind socket");
 
     listen(
-        socket_fd, 
-        10
+        listen_fd, 
+        1024
     ).unwrap();
 
     // 创建 epoll 事件
@@ -39,7 +41,7 @@ fn main() {
     let mut event_read_only = EpollEvent::new(EpollFlags::EPOLLIN, 0u64);
     // 可读可写事件
     let mut event_read_write = EpollEvent::new(EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT, 0u64);
-    // 回调事件的数组，当 epoll 中有响应事件
+    // 回调事件的数组，当 epoll 中有响应事件则加入到这个数组中
     let mut current_events = [EpollEvent::empty(); MAX_EVENTS];
     
     // 注册 epoll
@@ -48,62 +50,57 @@ fn main() {
     epoll_ctl(
         epoll_fd, 
         EpollOp::EpollCtlAdd, 
-        socket_fd, 
+        listen_fd, 
         &mut event_read_only
     ).unwrap();
 
     let mut outgoing_queue: VecDeque<Message> = VecDeque::new();
     loop {
-        if outgoing_queue.is_empty() {
-            epoll_ctl(
-                epoll_fd, 
-                EpollOp::EpollCtlMod,
-                socket_fd, 
-                &mut event_read_only
-            ).unwrap();
-        }else {
-            epoll_ctl(
-                epoll_fd, 
-                EpollOp::EpollCtlMod, 
-                socket_fd, 
-                &mut event_read_write
-            ).unwrap();
-        }
-
+        // 等待事件，返回发生事件数量
         let num_events = epoll_wait(
             epoll_fd, 
             &mut current_events, 
             -1
         ).unwrap();
 
+        // 遍历所有事件
         for i in 0..num_events {
             let event = &current_events[i];
-            if event.events().contains(EpollFlags::EPOLLIN) {
-                let mut buf = [0; MAX_MESSAGE_SIZE];
-                let (nbytes, addr) = recvfrom(socket_fd, &mut buf).unwrap();
-                println!("recv {} bytes from {}", nbytes, addr.unwrap());
+            if event.data() == listen_fd as u64 {
+                // 如果当前事件发生在 listen_fd 上，则说明产生连接，此时接收连接
+                if event.events().contains(EpollFlags::EPOLLIN) {
+                    // 接收连接，获取 socket
+                    let socket_fd = accept(listen_fd).unwrap();
+                    if socket_fd > 0 {
+                        // 设置连接为非阻塞模式
+                        fcntl(socket_fd, nix::fcntl::FcntlArg::F_GETFL).unwrap();
+                        // 将新连接加入到epoll中，设置读写模式，即当发生可读或可写事件时都会触发
+                        epoll_ctl(
+                            epoll_fd, 
+                            EpollOp::EpollCtlAdd, 
+                            socket_fd, 
+                            &mut event_read_write
+                        ).unwrap();
+                    }
+                }
+            }else {
+                if event.events().contains(EpollFlags::EPOLLOUT) {
+                    // 当 socket 可写时
+                    let msg = outgoing_queue.pop_front().unwrap();
+                    let nbytes = sendto(
+                        listen_fd,
+                        &msg.buffer,
+                        &msg.addr,
+                        MsgFlags::empty()
+                    ).unwrap();
+                    println!("Send {} bytes to {}", nbytes, msg.addr);
+                }
 
-                if outgoing_queue.len() > MAX_QUEUE_SIZE {
-                    println!("outgoing buffers exhausted; dropping packet.");
-                }else {
-                    outgoing_queue.push_back(Message{
-                        buffer: buf[0..nbytes].to_vec(),
-                        addr: addr.unwrap()
-                    });
-                    println!("Total pending writes: {}", outgoing_queue.len());
+                if event.events().contains(EpollFlags::EPOLLIN) {
+                    // 当 socket 可读时
                 }
             }
 
-            if event.events().contains(EpollFlags::EPOLLOUT) {
-                let msg = outgoing_queue.pop_front().unwrap();
-                let nbytes = sendto(
-                    socket_fd,
-                    &msg.buffer,
-                    &msg.addr,
-                    MsgFlags::empty()
-                ).unwrap();
-                println!("Send {} bytes to {}", nbytes, msg.addr);
-            }
         }
     }
 }
