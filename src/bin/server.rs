@@ -17,17 +17,18 @@ fn main() {
             clients.push(socket.try_clone().unwrap());
             tp.spawn(move || {
                 loop {
-                    let mut buf = [0; 10];
-                    match socket.read_exact(&mut buf) {
-                        Ok(_) => {
+                    let mut buf = [0; 1024];
+                    match socket.read(&mut buf) {
+                        Ok(0) => { continue; }
+                        Ok(n) => {
                             let s = String::from_utf8(buf.to_vec()).expect("Fail to convert u8 to string");
-                            println!("服务端接收到客户端 {} 消息: {}", addr, s);
+                            println!("Server receive {} bytes from {}",n ,addr);
                             sender.send(s.into_bytes()).expect("Fail to send message to sender");
                         },
                         
                         Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
                         Err(_) => {
-                            println!("客户端 {} 退出", addr);
+                            println!("CLient {} exit", addr);
                             break;
                         }
                     }

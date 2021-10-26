@@ -31,7 +31,7 @@ impl Shared {
     async fn broadcast(&mut self, sender: SocketAddr, message: &str) {
         for peer in self.peers.iter_mut() {
             if *peer.0 != sender {
-                peer.1.send(message.into());
+                peer.1.send(message.into()).expect("Failed to send message to client");
             }
         }
     }
@@ -61,8 +61,6 @@ async fn main() {
     let addr = "127.0.0.1:8080";
     let listener = TcpListener::bind(addr).await.unwrap();
     println!("Listening on: {}", addr);
-    // let mut connect_socks = Arc::new(Mutex::new(VecDeque::new()));
-    // let (sender, receiver) = mpsc::unbounded_channel::<Vec<u8>>();
     let state = Arc::new(Mutex::new(Shared::new()));
     loop {
         // 异步监听 socket 连接
@@ -88,18 +86,17 @@ async fn main() {
                     }
 
                     result = peer.socket.read(&mut buf) => match result {
-                        Ok(0) => {  continue; }
+                        // 当从客户端的 socket 中读取到消息，则将其广播给所有客户端的 channel
+                        Ok(0) => { continue; }
                         Ok(n) => {
                             let mut state_guard = state.lock().await;
                             let msg = String::from_utf8(buf.to_vec()).unwrap();
                             let msg = format!("{}: {}", addr, msg);
-                            println!("Receive {}", msg);
+                            println!("Receive {} bytes from {}", n, addr);
                             state_guard.broadcast(addr, &msg).await;
                         }
 
-                        Err(err) => {
-                            break
-                        }
+                        Err(_) => { break }
                     },
                 }
             }
