@@ -1,2 +1,3 @@
-extern crate nix;
+#![feature(async_closure)]
+
 pub mod tp;
