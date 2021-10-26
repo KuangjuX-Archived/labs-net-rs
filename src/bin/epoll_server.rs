@@ -65,7 +65,7 @@ fn main() {
         &mut event_read_only
     ).unwrap();
 
-    let mut outgoing_queue: Arc<Mutex<VecDeque<Message>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let outgoing_queue: Arc<Mutex<VecDeque<Message>>> = Arc::new(Mutex::new(VecDeque::new()));
     loop {
         // 等待事件，返回发生事件数量
         let num_events = epoll_wait(
@@ -120,7 +120,7 @@ fn main() {
                     close(event.data() as i32).unwrap();
                 }else if event.events().contains(EpollFlags::EPOLLIN) {
                     // 当 socket 可读时
-                    let mut outgoing_queue = Arc::clone(&outgoing_queue);
+                    let outgoing_queue = Arc::clone(&outgoing_queue);
                     tp.spawn(move || {
                         // 开启线程池，将消息送入到队列中
                         let mut buf = [0; 1024];
@@ -141,8 +141,8 @@ fn main() {
                 }
                 if event.events().contains(EpollFlags::EPOLLOUT) {
                     // 当 socket 可写时
-                    let mut outgoing_queue = Arc::clone(&outgoing_queue);
-                    let mut connection_sockets = Arc::clone(&connection_sockets);
+                    let outgoing_queue = Arc::clone(&outgoing_queue);
+                    let connection_sockets = Arc::clone(&connection_sockets);
                     tp.spawn(move || {
                         // 开启线程池，将data从队列中取出并送入客户端
                         let mut guard = outgoing_queue.lock().unwrap();

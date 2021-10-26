@@ -13,3 +13,5 @@ tokio-stream = { version = "0.1" }
 mio = { version = "0.7", features = ["os-poll", "net"] }
 nix = { version = "0.23.0" }
 futures = { version = "0.3.0", features = ["thread-pool"]}
+io-uring = { version = "0.5" }
+slab = "0.4"
