@@ -3,12 +3,8 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{ mpsc, Mutex };
-use tokio_util::codec::{ Framed, LinesCodec };
-use tokio_stream::StreamExt;
 
-use futures::SinkExt;
-
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -73,7 +69,6 @@ async fn main() {
         let (socket, addr) = listener.accept().await.unwrap();
         let state = Arc::clone(&state);
         tokio::spawn(async move {
-            // let mut lines = Framed::new(socket, LinesCodec::new());
             // 注册客户端，并将其加入到共享变量中
             let mut peer = Peer::new(state.clone(), socket).await;
             let mut state_guard = state.lock().await;
@@ -81,9 +76,9 @@ async fn main() {
             let msg = format!("{} has joined", addr);
             state_guard.broadcast(addr, &msg).await;
             drop(state_guard);
-            let mut buf = [0u8; 1024];
 
             loop {
+                let mut buf = [0u8; 1024];
                 tokio::select! {
                     // 当检测到状态变化则运行
                     Some(msg) = peer.rx.recv() => {
@@ -92,17 +87,18 @@ async fn main() {
                             .expect("Fail to send data to client");
                     }
 
-                    result = peer.socket.read(&mut buf) match result => {
+                    result = peer.socket.read(&mut buf) => match result {
+                        Ok(0) => {  continue; }
                         Ok(n) => {
                             let mut state_guard = state.lock().await;
                             let msg = String::from_utf8(buf.to_vec()).unwrap();
                             let msg = format!("{}: {}", addr, msg);
                             println!("Receive {}", msg);
-                            state_guard.broadcast(addr, msg).await;
+                            state_guard.broadcast(addr, &msg).await;
                         }
 
                         Err(err) => {
-                            break;
+                            break
                         }
                     },
                 }
