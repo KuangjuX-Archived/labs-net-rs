@@ -6,8 +6,10 @@ use nix::unistd::close;
 use nix::unistd::{ write, read };
 
 use std::collections::VecDeque;
+use std::io::ErrorKind;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::mpsc;
 
 use webserver::tp::{ SharedQueueThreadPool, ThreadPool };
 
@@ -47,7 +49,13 @@ fn main() {
     let tp = SharedQueueThreadPool::new(16).unwrap();
 
     // 创建连接队列
-    let connection_sockets = Arc::new(Mutex::new(VecDeque::new()));
+    let connection_sockets:Arc<Mutex<VecDeque<SocketInfo>>> = Arc::new(Mutex::new(VecDeque::new()));
+
+    // 创建读写管道
+    let (tx, rx) = mpsc::channel::<Message>();
+
+    // 创建管道，用来做线程间同步
+    let (sync_tx, sync_rx) = mpsc::sync_channel::<usize>(0);
 
     // 创建 epoll 事件
     // 可读事件
@@ -65,7 +73,7 @@ fn main() {
         &mut event_read_only
     ).unwrap();
 
-    let outgoing_queue: Arc<Mutex<VecDeque<Message>>> = Arc::new(Mutex::new(VecDeque::new()));
+    // let outgoing_queue: Arc<Mutex<VecDeque<Message>>> = Arc::new(Mutex::new(VecDeque::new()));
     loop {
         // 等待事件，返回发生事件数量
         let num_events = epoll_wait(
@@ -91,7 +99,7 @@ fn main() {
                         // 将新连接加入到epoll中，设置读写模式，即当发生可读或可写事件时都会触发
                         // 可读可写事件
                         let mut event_read_write = EpollEvent::new(
-                            EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT | EpollFlags::EPOLLET, 
+                            EpollFlags::EPOLLIN | EpollFlags::EPOLLET, 
                             socket_fd as u64
                         );
                         let mut conn_guard = connection_sockets.lock().unwrap();
@@ -120,46 +128,35 @@ fn main() {
                     close(event.data() as i32).unwrap();
                 }else if event.events().contains(EpollFlags::EPOLLIN) {
                     // 当 socket 可读时
-                    let outgoing_queue = Arc::clone(&outgoing_queue);
+                    let mut buf = [0; 1024];
+                    let tx = tx.clone();
+                    let sync_tx = sync_tx.clone();
                     tp.spawn(move || {
-                        // 开启线程池，将消息送入到队列中
-                        let mut buf = [0; 1024];
-                        // let nbytes = read(event.data() as i32, &mut buf).unwrap();
                         match read(event.data() as i32, &mut buf) {
                             Ok(nbytes) => {
                                 let addr = getpeername(event.data() as i32).unwrap();
                                 let s = String::from_utf8_lossy(&buf);
-                                println!("Client receive {} bytes msg: {}", nbytes, s);
-                                let mut guard = outgoing_queue.lock().unwrap();
-                                guard.push_back(Message{buffer: buf.to_vec(), addr: addr});
-                                drop(guard);
+                                println!("Client receive {} bytes msg: {} from {}", nbytes, s, addr);
+                                tx.send(Message{
+                                    buffer: buf.to_vec(),
+                                    addr: addr
+                                }).unwrap();
+                                sync_tx.send(0).unwrap();
                             },
-
+    
                             Err(_) => ()
                         }
-                    });
+                    });          
                 }
-                if event.events().contains(EpollFlags::EPOLLOUT) {
-                    // 当 socket 可写时
-                    let outgoing_queue = Arc::clone(&outgoing_queue);
-                    let connection_sockets = Arc::clone(&connection_sockets);
-                    tp.spawn(move || {
-                        // 开启线程池，将data从队列中取出并送入客户端
-                        let mut guard = outgoing_queue.lock().unwrap();
-                        match guard.pop_front() {
-                            Some(msg) => {
-                                // 将消息发送到客户端
-                                let conn_guard = connection_sockets.lock().unwrap();
-                                for socket_info in conn_guard.iter() {
-                                    let nbytes = write(socket_info.fd, &msg.buffer).unwrap();
-                                    println!("Send {} bytes into {}", nbytes, socket_info.addr);
-                                }
-                                drop(conn_guard);
-                            },
-                            None => ()
-                        }
-                        drop(guard);
-                    });
+                let _ = sync_rx.recv().unwrap();
+                // 当 socket 可写时
+                if let Ok(msg) = rx.try_recv() {
+                    let conn_guard = connection_sockets.lock().unwrap();
+                    for socket_info in conn_guard.iter() {
+                        let nbytes = write(socket_info.fd, &msg.buffer).unwrap();
+                        println!("Send {} bytes into {}", nbytes, socket_info.addr);
+                    }
+                    drop(conn_guard);
                 }
             }
 

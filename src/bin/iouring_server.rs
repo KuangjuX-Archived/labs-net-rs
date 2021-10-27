@@ -65,7 +65,7 @@ fn main() {
     // 从 io_uring 时例中获取提交者,提交队列，完成队列
     let (submitter, mut sq, mut cq) = ring.split();
 
-    let mut accept = AcceptCount::new(listener.as_raw_fd(), token_alloc.insert(Token::Accept), 3);
+    let mut accept = AcceptCount::new(listener.as_raw_fd(), token_alloc.insert(Token::Accept), 10);
     accept.push_to(&mut sq); 
 
     loop {
