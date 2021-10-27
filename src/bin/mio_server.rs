@@ -2,7 +2,7 @@
 use mio::event::Event;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Registry, Token};
-use webserver::tp::{ SharedQueueThreadPool, ThreadPool };
+use server::tp::{ SharedQueueThreadPool, ThreadPool };
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::sync::mpsc;

@@ -7,3 +7,7 @@ TCP server implementation using various methods.
 - [x] Server using epoll & threadpool
 - [x] Server using tokio  
 - [ ] Server using io_uring
+
+## Some Useful Links
+[epoll & thread pool](https://www.zhihu.com/question/271561199)
+[io_uring](http://arthurchiao.art/blog/intro-to-io-uring-zh/)

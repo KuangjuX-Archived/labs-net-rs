@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 use std::sync::mpsc;
 use std::io::{ErrorKind, Read, Write};
-use webserver::tp::{SharedQueueThreadPool, ThreadPool};
+use server::tp::{SharedQueueThreadPool, ThreadPool};
 
 fn main() {
     println!("Hello Echo Server");

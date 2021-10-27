@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
-use webserver::tp::{ SharedQueueThreadPool, ThreadPool };
+use server::tp::{ SharedQueueThreadPool, ThreadPool };
 
 const MAX_EVENTS: usize = 128;
 struct Message {
@@ -73,7 +73,6 @@ fn main() {
         &mut event_read_only
     ).unwrap();
 
-    // let outgoing_queue: Arc<Mutex<VecDeque<Message>>> = Arc::new(Mutex::new(VecDeque::new()));
     loop {
         // 等待事件，返回发生事件数量
         let num_events = epoll_wait(
@@ -148,6 +147,7 @@ fn main() {
                         }
                     });          
                 }
+                // 对线程池内容进行同步
                 let _ = sync_rx.recv().unwrap();
                 // 当 socket 可写时
                 if let Ok(msg) = rx.try_recv() {
