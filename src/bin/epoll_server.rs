@@ -6,10 +6,10 @@ use nix::unistd::close;
 use nix::unistd::{ write, read };
 
 use std::collections::VecDeque;
-use std::io::ErrorKind;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::mpsc;
+
+use crossbeam;
 
 use server::tp::{ SharedQueueThreadPool, ThreadPool };
 
@@ -52,10 +52,7 @@ fn main() {
     let connection_sockets:Arc<Mutex<VecDeque<SocketInfo>>> = Arc::new(Mutex::new(VecDeque::new()));
 
     // 创建读写管道
-    let (tx, rx) = mpsc::channel::<Message>();
-
-    // 创建管道，用来做线程间同步
-    let (sync_tx, sync_rx) = mpsc::sync_channel::<usize>(0);
+    let (tx, rx) = crossbeam::channel::unbounded::<Message>();
 
     // 创建 epoll 事件
     // 可读事件
@@ -72,6 +69,29 @@ fn main() {
         listen_fd, 
         &mut event_read_only
     ).unwrap();
+
+    {
+        let connection_sockets = connection_sockets.clone();
+        tp.spawn(move || {
+            loop {
+                // 当 socket 可写时
+                if let Ok(msg) = rx.try_recv() {
+                    let conn_guard = connection_sockets.lock().unwrap();
+                    for socket_info in conn_guard.iter() {
+                        match write(socket_info.fd, &msg.buffer) {
+                            Ok(nbytes) => {
+                                println!("Send {} bytes into {}", nbytes, socket_info.addr);
+                            },
+
+                            Err(_) => { continue; }
+                        }
+                    }
+                    drop(conn_guard);
+                }
+            }
+        });
+    }
+
 
     loop {
         // 等待事件，返回发生事件数量
@@ -129,7 +149,6 @@ fn main() {
                     // 当 socket 可读时
                     let mut buf = [0; 1024];
                     let tx = tx.clone();
-                    let sync_tx = sync_tx.clone();
                     tp.spawn(move || {
                         match read(event.data() as i32, &mut buf) {
                             Ok(nbytes) => {
@@ -140,23 +159,11 @@ fn main() {
                                     buffer: buf.to_vec(),
                                     addr: addr
                                 }).unwrap();
-                                sync_tx.send(0).unwrap();
                             },
     
                             Err(_) => ()
                         }
                     });          
-                }
-                // 对线程池内容进行同步
-                let _ = sync_rx.recv().unwrap();
-                // 当 socket 可写时
-                if let Ok(msg) = rx.try_recv() {
-                    let conn_guard = connection_sockets.lock().unwrap();
-                    for socket_info in conn_guard.iter() {
-                        let nbytes = write(socket_info.fd, &msg.buffer).unwrap();
-                        println!("Send {} bytes into {}", nbytes, socket_info.addr);
-                    }
-                    drop(conn_guard);
                 }
             }
 
