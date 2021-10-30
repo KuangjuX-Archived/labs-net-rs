@@ -67,6 +67,9 @@ fn main() {
     // 一段用来存放不同事件token的内存区域，通过token_index获取到事件类型及信息
     let mut token_alloc = Slab::with_capacity(64);
 
+    // 用来存放所有建立连接的 sockets
+    let mut sockets = Vec::new();
+
     println!("Server listen on {}", listener.local_addr().unwrap());
 
     // 从 io_uring 实例中获取提交者,提交队列，完成队列
@@ -135,6 +138,8 @@ fn main() {
                     accept.count += 1;
                     // 此时收到的结果是一个文件描述符，表示的是接收到连接的socket
                     let fd = ret;
+                    // 将文件描述符push到sockets中
+                    sockets.push(fd);
                     // 此时向分配 token_alloc 中插入Token获取token用于作为 user_data
                     let poll_token = token_alloc.insert(Token::Poll{ fd });
                     // 创建poll实例，不断轮询检测是否从该socket中收到信息
@@ -191,6 +196,12 @@ fn main() {
                         token_alloc.remove(token_index);
 
                         println!("shutdown");
+
+                        for i in 0..sockets.len() {
+                            if sockets[i] == fd {
+                                sockets.remove(i);
+                            }
+                        }
 
                         unsafe {
                             libc::close(fd);
