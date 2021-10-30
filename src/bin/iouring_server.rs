@@ -213,6 +213,7 @@ fn main() {
                         let buf = &buf_alloc[buf_index];
 
                         let socket_len = sockets.len();
+                        // 移除之前的 token_index 并进行重新分配
                         token_alloc.remove(token_index);
                         for i in 0..socket_len {
                             // 新建write_token并将其传输给所有正在连接的socket
