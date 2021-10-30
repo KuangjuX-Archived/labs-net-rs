@@ -212,23 +212,30 @@ fn main() {
                         // 获取用来获取 read 的缓冲区
                         let buf = &buf_alloc[buf_index];
 
-                        // 修改token为可写事件(此时其实是复用了token和token_index)
-                        *token = Token::Write {
-                            fd, 
-                            buf_index,
-                            len,
-                            offset: 0
-                        };
+                        let socket_len = sockets.len();
+                        token_alloc.remove(token_index);
+                        for i in 0..socket_len {
+                            // 新建write_token并将其传输给所有正在连接的socket
+                            let write_token = Token::Write {
+                                fd: sockets[i], 
+                                buf_index,
+                                len,
+                                offset: 0
+                            };
 
-                        // 注册 write 事件，实际上是注册 send syscall 的事件
-                        let write_e = opcode::Send::new(types::Fd(fd), buf.as_ptr(), len as _)
-                                            .build()
-                                            .user_data(token_index as _);
-                        unsafe {
-                            if sq.push(&write_e).is_err() {
-                                backlog.push_back(write_e);
+                            let write_token_index = token_alloc.insert(write_token);
+
+                            // 注册 write 事件，实际上是注册 send syscall 的事件
+                            let write_e = opcode::Send::new(types::Fd(sockets[i]), buf.as_ptr(), len as _)
+                                                .build()
+                                                .user_data(write_token_index as _);
+                            unsafe {
+                                if sq.push(&write_e).is_err() {
+                                    backlog.push_back(write_e);
+                                }
                             }
                         }
+
                     }
                 }
 
