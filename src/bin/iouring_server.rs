@@ -68,7 +68,7 @@ fn main() {
     let mut token_alloc = Slab::with_capacity(64);
 
     // 用来存放所有建立连接的 sockets
-    let mut sockets = Vec::new();
+    let mut conn_sockets = Vec::new();
 
     println!("Server listen on {}", listener.local_addr().unwrap());
 
@@ -83,8 +83,10 @@ fn main() {
         // 提交SQ里的所有队列，等待至少一个事件成功返回
         match submitter.submit_and_wait(1) {
             Ok(_) => (),
-            Err(ref err) => if err.raw_os_error() == Some(libc::EBUSY) { break; },
-            Err(err) => panic!(err)
+            Err(err) => {
+                if err.raw_os_error() == Some(libc::EBUSY) { break; }
+                else { panic!(err) }
+            }
         }
         // 同步完成队列，刷新在内核中的CQEs
         cq.sync();
@@ -94,8 +96,10 @@ fn main() {
                 // 提交队列满了的时候提交所有任务到内核
                 match submitter.submit() {
                     Ok(_) => (),
-                    Err(ref err) => if err.raw_os_error() == Some(libc::EBUSY) {break;},
-                    Err(err) => panic!(err)
+                    Err(err) => {
+                        if err.raw_os_error() == Some(libc::EBUSY) { break; }
+                        else { panic!(err) }
+                    }
                 }
             }
             // 同步提交队列的内容
@@ -139,7 +143,7 @@ fn main() {
                     // 此时收到的结果是一个文件描述符，表示的是接收到连接的socket
                     let fd = ret;
                     // 将文件描述符push到sockets中
-                    sockets.push(fd);
+                    conn_sockets.push(fd);
                     // 此时向分配 token_alloc 中插入Token获取token用于作为 user_data
                     let poll_token = token_alloc.insert(Token::Poll{ fd });
                     // 创建poll实例，不断轮询检测是否从该socket中收到信息
@@ -197,10 +201,8 @@ fn main() {
 
                         println!("shutdown");
 
-                        for i in 0..sockets.len() {
-                            if sockets[i] == fd {
-                                sockets.remove(i);
-                            }
+                        if let Some(pos) = conn_sockets.iter().position(|sock| *sock == fd) {
+                            conn_sockets.remove(pos);
                         }
 
                         unsafe {
@@ -212,13 +214,13 @@ fn main() {
                         // 获取用来获取 read 的缓冲区
                         let buf = &buf_alloc[buf_index];
 
-                        let socket_len = sockets.len();
+                        let socket_len = conn_sockets.len();
                         // 移除之前的 token_index 并进行重新分配
                         token_alloc.remove(token_index);
                         for i in 0..socket_len {
                             // 新建write_token并将其传输给所有正在连接的socket
                             let write_token = Token::Write {
-                                fd: sockets[i], 
+                                fd: conn_sockets[i], 
                                 buf_index,
                                 len,
                                 offset: 0
@@ -227,7 +229,7 @@ fn main() {
                             let write_token_index = token_alloc.insert(write_token);
 
                             // 注册 write 事件，实际上是注册 send syscall 的事件
-                            let write_e = opcode::Send::new(types::Fd(sockets[i]), buf.as_ptr(), len as _)
+                            let write_e = opcode::Send::new(types::Fd(conn_sockets[i]), buf.as_ptr(), len as _)
                                                 .build()
                                                 .user_data(write_token_index as _);
                             unsafe {
